@@ -4,7 +4,7 @@ import pandas as pd
 import os
 import torch
 
-class CustomDataset(Dataset):
+class EGDDataset(Dataset):
     def __init__(self, image_folder, label_file, transform=None):
         self.labels = pd.read_excel(label_file)
         self.image_folder = image_folder
@@ -36,5 +36,5 @@ if __name__ == "__main__":
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
     
-    dataset = CustomDataset(image_folder="C:\Users\jorge\Desktop\all_images_mean_cropped", label_file="C:\Users\jorge\Documents\GitHub\gastroscopy_attention_classifier\full_filtered.xlsx", transform=transform)
-    print(dataset[0])  # Output will be (image, individual_labels, final_label)
+    dataset = EGDDataset(image_folder="C:/Users/neild/OneDrive/Documentos/CVC/EGD_Barcelona/gastroscopy_attention_classifier/all_images_mean_cropped", label_file="C:/Users/neild/OneDrive/Documentos/CVC/EGD_Barcelona/gastroscopy_attention_classifier/full_filtered.xlsx", transform=transform)
+    print(dataset[2])  # Output will be (image, individual_labels, final_label)
