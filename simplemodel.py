@@ -24,7 +24,7 @@ class SimpleCNN(nn.Module):
         x = self.pool(F.relu(self.conv3(x)))
         
         # Flatten the tensor
-        x = x.view(-1, 64 * 70 * 80)
+        x = x.view(-1, 64 * 28 * 32)
         
         # Fully connected layers
         x = F.relu(self.fc1(x))
