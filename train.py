@@ -12,6 +12,11 @@ writer = SummaryWriter()
 
 # Initialize dataset
 transform = transforms.Compose([
+    transforms.Resize((300,340)), #originally 560 x 640 so we preserve the aspect ratio
+    transforms.RandomSizedCrop(224),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(10),
+    transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
