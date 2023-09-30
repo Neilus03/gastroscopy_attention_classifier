@@ -16,7 +16,7 @@ class SimpleCNN(nn.Module):
         
         # Fully connected layers
         self.fc1 = nn.Linear(64 * 28 * 32, 128)  # 64 channels, image size reduced to 70x80 after 3 max-pooling
-        self.fc2 = nn.Linear(128, num_classes)   # Output layer, num_classes = 10 for this example
+        self.fc2 = nn.Linear(128, num_classes)   # Output layer, num_classes=3 (0,1,2)
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
