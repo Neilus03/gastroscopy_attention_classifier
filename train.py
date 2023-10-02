@@ -13,9 +13,6 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 
-# Initialize k-Fold cross-validation
-k_folds = 5 
-kfold = KFold(n_splits=k_folds, shuffle=True)
 
 # Initialize lists to store losses and accuracies
 train_losses = []
