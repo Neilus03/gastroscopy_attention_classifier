@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import random_split, DataLoader
 import numpy as np
+from sklearn.model_selection import KFold
 from efficientnet import initialize_model
 from dataloader import EGDDataset
 from train_setup import *
@@ -11,6 +12,10 @@ from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
+
+# Initialize k-Fold cross-validation
+k_folds = 5 
+kfold = KFold(n_splits=k_folds, shuffle=True)
 
 # Initialize lists to store losses and accuracies
 train_losses = []
