@@ -134,19 +134,5 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
         print("\n\n")
         print("---------------------------------------------")
     
-    # Accumulate state_dicts for later averaging
-    if sum_state_dict is None:
-        sum_state_dict = model.state_dict()
-    else:
-        for key in sum_state_dict.keys():
-            sum_state_dict[key] += model.state_dict()[key]
 
-# Calculate mean state_dict
-for key in sum_state_dict.keys():
-    sum_state_dict[key] /= n_splits
 
-# Load mean state_dict into a fresh model
-mean_model = initialize_model(num_classes)
-mean_model.load_state_dict(sum_state_dict)
-torch.save(mean_model.state_dict(), "mean_model.pth")
-    
