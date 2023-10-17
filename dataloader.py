@@ -16,7 +16,7 @@ class EGDDataset(Dataset):
 
     def __getitem__(self, idx):
         # Image loading
-        img_name = os.path.join(self.image_folder, f"{idx+1}.BMP")  # Adjust the file name according to your numbering scheme
+        img_name = os.path.join(self.image_folder, f"{idx+1}.BMP") 
         image = Image.open(img_name)
 
         # Labels
