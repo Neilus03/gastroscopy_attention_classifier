@@ -36,13 +36,16 @@ n_splits = 3
 kfold = KFold(n_splits=n_splits, shuffle=True)
 
 # Hyperparameters
-num_epochs = 40
+num_epochs = 10
 learning_rate = 1e-4
 num_classes = 3
 batch_size = 16
 
 # Initialize sum of state_dicts to zero, for calculating mean later
 sum_state_dict = None
+
+# Initialize dictionary to store metrics for each fold
+metrics_dict = {}
 
 # K-Fold Cross Validation
 for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
@@ -61,6 +64,8 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
 
     # Initialize the model and optimizer
     model = initialize_model(num_classes)
+    model_weights_path = "/home/ndelafuente/CVC/EGD_Barcelona/gastroscopy_attention_classifier/kfold_weights/model_fold_3.pth"
+    model.load_state_dict(torch.load(model_weights_path))
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
 
@@ -121,7 +126,9 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
         wandb.log({"confusion_matrix": wandb.Image(fig)})
         plt.close()
 
+        
         # Calculate and print per-class accuracy and recall
+        class_metrics = {}
         for i in range(num_classes):
             tp = conf_mat[i, i]
             fn = np.sum(conf_mat[i, :]) - tp
@@ -134,6 +141,15 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
             print(f'Class {i} Accuracy: {accuracy * 100:.2f}%')
             print(f'Class {i} Recall: {recall * 100:.2f}%')
             print("\n")
+
+            class_metrics[f"class_{i}_accuracy"] = accuracy
+            class_metrics[f"class_{i}_recall"] = recall
+
+        global_accuracy = correct / total
+        global_recall = np.trace(conf_mat) / np.sum(conf_mat)
+
+        print(f'Global Accuracy: {global_accuracy * 100:.2f}%')
+        print(f'Global Recall: {global_recall * 100:.2f}%')
         print("\n\n")
         print("---------------------------------------------")
 
@@ -141,8 +157,18 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
         wandb.log({
             "train_loss": running_loss,
             "val_loss": val_loss,
-            "val_accuracy": 100 * correct / total
+            "val_accuracy": 100 * correct / total,
+            "global_accuracy": global_accuracy,
+            "global_recall": global_recall,
+            **class_metrics
         })
+
+        # Store metrics in dictionary
+        metrics_dict[f"fold_{fold}"] = {
+            "global_accuracy": global_accuracy,
+            "global_recall": global_recall,
+            **class_metrics
+        }
 
     # Accumulate state_dicts for later averaging
     if sum_state_dict is None:
@@ -150,6 +176,8 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
     else:
         for key in sum_state_dict.keys():
             sum_state_dict[key] += model.state_dict()[key]
+            
+    
 
 # Calculate mean state_dict
 for key in sum_state_dict.keys():
@@ -159,4 +187,10 @@ for key in sum_state_dict.keys():
 mean_model = initialize_model(num_classes)
 mean_model.load_state_dict(sum_state_dict)
 torch.save(mean_model.state_dict(), "mean_model.pth")
+
+# Log metrics for all folds
+wandb.log(metrics_dict)
+
+print(metrics_dict)
+
 wandb.finish()
