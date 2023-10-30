@@ -19,7 +19,8 @@ wandb.init(project='gastroscopy_attention_classifier_training', entity='neildlf'
 transform = transforms.Compose([
     #transforms.Resize((300, 340)),
     #transforms.RandomResizedCrop(224),
-    transforms.RandomHorizontalFlip(),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomVerticalFlip(p=0.5),
     transforms.RandomRotation(10),
     transforms.ToTensor(),
     #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -36,10 +37,10 @@ n_splits = 3
 kfold = KFold(n_splits=n_splits, shuffle=True)
 
 # Hyperparameters
-num_epochs = 10
-learning_rate = 1e-4
+num_epochs = 50
+learning_rate = 3e-4
 num_classes = 3
-batch_size = 16
+batch_size = 32
 
 # Initialize sum of state_dicts to zero, for calculating mean later
 sum_state_dict = None
@@ -64,8 +65,8 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
 
     # Initialize the model and optimizer
     model = initialize_model(num_classes)
-    model_weights_path = "/home/ndelafuente/CVC/EGD_Barcelona/gastroscopy_attention_classifier/kfold_weights/model_fold_3.pth"
-    model.load_state_dict(torch.load(model_weights_path))
+    #model_weights_path = "/home/ndelafuente/CVC/EGD_Barcelona/gastroscopy_attention_classifier/kfold_weights/model_fold_3.pth"
+    #model.load_state_dict(torch.load(model_weights_path))
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
 
@@ -113,7 +114,7 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), f"/home/ndelafuente/CVC/EGD_Barcelona/gastroscopy_attention_classifier/kfold_weights_k3/model_fold_{fold}.pth")
+            torch.save(model.state_dict(), f"/home/ndelafuente/CVC/EGD_Barcelona/gastroscopy_attention_classifier/kfold_weights_k3_1/model_fold_{fold}.pth")
 
         print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {100 * correct / total:.2f}%")
         print(f"correctly classified: {correct}, incorrectly classified: {total-correct}")
