@@ -40,10 +40,13 @@ kfold = KFold(n_splits=n_splits, shuffle=True)
 num_epochs = 50
 learning_rate = 3e-4
 num_classes = 3
-batch_size = 32
+batch_size = 64
 
 # Initialize sum of state_dicts to zero, for calculating mean later
 sum_state_dict = None
+
+# Store average confusion matrices for each fold
+confusion_matrices = []
 
 # Initialize dictionary to store metrics for each fold
 metrics_dict = {}
@@ -65,12 +68,22 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
 
     # Initialize the model and optimizer
     model = initialize_model(num_classes)
+    for name, param in model.named_parameters():
+        if 'weight' in name:
+            if len(param.size()) > 1:
+                nn.init.xavier_uniform_(param)
+                
+    '''If i wanted to initalize the model with the pretrained way, uncomment next 2 lines'''
     #model_weights_path = "/home/ndelafuente/CVC/EGD_Barcelona/gastroscopy_attention_classifier/kfold_weights/model_fold_3.pth"
     #model.load_state_dict(torch.load(model_weights_path))
+    
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
 
     train_losses, val_losses, val_accuracies = [], [], []
+    
+    # Initialize confusion matrix for current fold
+    fold_conf_mat = np.zeros((num_classes, num_classes))
 
     for epoch in range(num_epochs):
         model.train()
@@ -119,13 +132,20 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
         print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {100 * correct / total:.2f}%")
         print(f"correctly classified: {correct}, incorrectly classified: {total-correct}")
 
-        sns.heatmap(conf_mat, annot=True, cmap='cool')
-        plt.title("Classification confusion matrix")
+        # Store the confusion matrix for the current fold
+        confusion_matrices.append(conf_mat)
+
+        # Log the confusion matrix for the current fold to wandb with a unique name
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(conf_mat, annot=True, fmt='g', cmap='cool')
+        plt.title(f"Fold {fold} Confusion Matrix")
         plt.ylabel("Actual label")
-        plt.xlabel("Predicted as")
-        fig = plt.gcf()
-        wandb.log({"confusion_matrix": wandb.Image(fig)})
+        plt.xlabel("Predicted label")
+        # You should save the plot before logging it to wandb
+        plt.savefig(f'confusion_matrix_fold_{fold}.png')
         plt.close()
+        # Log the confusion matrix with a unique name for each fold
+        wandb.log({f"confusion_matrix_fold_{fold}": wandb.Image(f'confusion_matrix_fold_{fold}.png')})
 
         
         # Calculate and print per-class accuracy and recall
@@ -138,13 +158,19 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
 
             accuracy = (tp + tn) / np.sum(conf_mat)
             recall = tp / (tp + fn)
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+            f1_score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
 
             print(f'Class {i} Accuracy: {accuracy * 100:.2f}%')
             print(f'Class {i} Recall: {recall * 100:.2f}%')
+            print(f'Class {i} Precision: {precision * 100:.2f}%')
+            print(f'Class {i} F1 Score: {f1_score * 100:.2f}%')
             print("\n")
 
             class_metrics[f"class_{i}_accuracy"] = accuracy
             class_metrics[f"class_{i}_recall"] = recall
+            class_metrics[f"class_{i}_precision"] = precision
+            class_metrics[f"class_{i}_f1_score"] = f1_score
 
         global_accuracy = correct / total
         global_recall = np.trace(conf_mat) / np.sum(conf_mat)
@@ -178,7 +204,28 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
         for key in sum_state_dict.keys():
             sum_state_dict[key] += model.state_dict()[key]
             
-    
+ 
+# Calculate the average confusion matrix
+avg_conf_mat = np.mean(confusion_matrices, axis=0)
+
+# Plot the averaged confusion matrix
+sns.heatmap(avg_conf_mat, annot=True, fmt='.2f', cmap='cool')
+plt.title("Averaged Classification Confusion Matrix")
+plt.ylabel("Actual label")
+plt.xlabel("Predicted label")
+# Save the figure before displaying it
+plt.savefig('averaged_conf_mat.png')
+plt.show()
+plt.close()
+
+# Log the averaged confusion matrix to wandb
+avg_conf_mat_fig = plt.figure(figsize=(10, 8))
+sns.heatmap(avg_conf_mat, annot=True, fmt='.2f', cmap='cool')
+plt.title("Averaged Classification Confusion Matrix")
+plt.ylabel("Actual label")
+plt.xlabel("Predicted label")
+plt.close(avg_conf_mat_fig)
+wandb.log({"avg_confusion_matrix": wandb.Image(avg_conf_mat_fig)})
 
 # Calculate mean state_dict
 for key in sum_state_dict.keys():
