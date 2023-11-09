@@ -13,18 +13,18 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Initialize wandb
-wandb.init(project='gastroscopy_attention_classifier_training', entity='neildlf')
+wandb.init(project='gastroscopy_attention_classifier_training_4kfolds', entity='neildlf')
 
 # Initialize dataset
 transform = transforms.Compose([
-    #transforms.Resize((300, 340)),
-    #transforms.RandomResizedCrop(224),
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomVerticalFlip(p=0.5),
     transforms.RandomRotation(10),
     transforms.ToTensor(),
-    #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
+
+#name the device
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 dataset = EGDDataset(
     image_folder="/home/ndelafuente/CVC/EGD_Barcelona/gastroscopy_attention_classifier/inference/all_images_mean_cropped",
@@ -33,20 +33,33 @@ dataset = EGDDataset(
 )
 
 # Initialize KFold
-n_splits = 3
+n_splits = 4
 kfold = KFold(n_splits=n_splits, shuffle=True)
 
 # Hyperparameters
-num_epochs = 50
+num_epochs = 200
 learning_rate = 3e-4
 num_classes = 3
-batch_size = 64
+batch_size = 12
+
+#Log hyperparameters to keep track of them
+wandb.log({
+    "num_epochs": num_epochs,
+    "learning_rate": learning_rate,
+    "num_classes": num_classes,
+    "batch_size": batch_size,
+    "n_splits": n_splits,
+})
 
 # Initialize sum of state_dicts to zero, for calculating mean later
 sum_state_dict = None
 
-# Store average confusion matrices for each fold
+# Store average confusion matrices for each fold and the global average
 confusion_matrices = []
+fold1_confusion_matrices = []
+fold2_confusion_matrices = []
+fold3_confusion_matrices = []
+fold4_confusion_matrices = []
 
 # Initialize dictionary to store metrics for each fold
 metrics_dict = {}
@@ -66,20 +79,23 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
     train_loader = DataLoader(train_subsampler, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_subsampler, batch_size=batch_size, shuffle=False)
 
-    # Initialize the model and optimizer
-    model = initialize_model(num_classes)
+   # Initialize the model and optimizer
+    model = initialize_model(num_classes).to(device)
+    
+    #If I wanted to initalize the model with the xavier way, uncomment next 3 lines
+    
     for name, param in model.named_parameters():
         if 'weight' in name:
             if len(param.size()) > 1:
                 nn.init.xavier_uniform_(param)
-                
+    
     '''If i wanted to initalize the model with the pretrained way, uncomment next 2 lines'''
     #model_weights_path = "/home/ndelafuente/CVC/EGD_Barcelona/gastroscopy_attention_classifier/kfold_weights/model_fold_3.pth"
     #model.load_state_dict(torch.load(model_weights_path))
     
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
-
+    
     train_losses, val_losses, val_accuracies = [], [], []
     
     # Initialize confusion matrix for current fold
@@ -91,6 +107,7 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
 
 
         for i, (images, individual_labels, final_label) in enumerate(train_loader):
+            images, final_label = images.to(device), final_label.to(device)
             outputs = model(images)
             loss = criterion(outputs, final_label)
 
@@ -99,6 +116,7 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
             optimizer.step()
 
             running_loss += loss.item()
+            torch.cuda.empty_cache()
 
         train_losses.append(running_loss / len(train_loader))
 
@@ -110,6 +128,7 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
 
         with torch.no_grad():
             for images, individual_labels, final_label in val_loader:
+                images, final_label = images.to(device), final_label.to(device)
                 outputs = model(images)
                 loss = criterion(outputs, final_label)
 
@@ -127,14 +146,23 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), f"/home/ndelafuente/CVC/EGD_Barcelona/gastroscopy_attention_classifier/kfold_weights_k3_1/model_fold_{fold}.pth")
+            torch.save(model.state_dict(), f"/home/ndelafuente/CVC/EGD_Barcelona/gastroscopy_attention_classifier/kfold_weights_k4/model_fold_{fold}.pth")
 
         print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss:.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {100 * correct / total:.2f}%")
         print(f"correctly classified: {correct}, incorrectly classified: {total-correct}")
 
         # Store the confusion matrix for the current fold
-        confusion_matrices.append(conf_mat)
-
+        if epoch > 100:
+            confusion_matrices.append(conf_mat)
+        if fold == 0 and epoch > 100: #to do average when already trained, not when starting training
+            fold1_confusion_matrices.append(conf_mat)
+        elif fold == 1 and epoch > 100: #to do average when already trained, not when starting training
+            fold2_confusion_matrices.append(conf_mat)
+        elif fold == 2 and epoch > 100: #to do average when already trained, not when starting training
+            fold3_confusion_matrices.append(conf_mat)
+        elif fold == 3 and epoch > 100: #to do average when already trained, not when starting training
+            fold4_confusion_matrices.append(conf_mat)
+            
         # Log the confusion matrix for the current fold to wandb with a unique name
         plt.figure(figsize=(8, 6))
         sns.heatmap(conf_mat, annot=True, fmt='g', cmap='cool')
@@ -208,20 +236,69 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(dataset)):
 # Calculate the average confusion matrix
 avg_conf_mat = np.mean(confusion_matrices, axis=0)
 
-# Plot the averaged confusion matrix
-sns.heatmap(avg_conf_mat, annot=True, fmt='.2f', cmap='cool')
-plt.title("Averaged Classification Confusion Matrix")
+# Get the averaged confusion matrix for each fold
+avg_conf_mat_fold1 = np.mean(fold1_confusion_matrices, axis=0) 
+avg_conf_mat_fold2 = np.mean(fold2_confusion_matrices, axis=0)
+avg_conf_mat_fold3 = np.mean(fold3_confusion_matrices, axis=0)
+avg_conf_mat_fold4 = np.mean(fold4_confusion_matrices, axis=0)
+
+# Plot the averaged confusion matrix for each fold
+
+# Fold 1
+sns.heatmap(avg_conf_mat_fold1, annot=True, fmt='.2f', cmap='cool')
+plt.title("Fold 1 Averaged Classification Confusion Matrix")
 plt.ylabel("Actual label")
 plt.xlabel("Predicted label")
 # Save the figure before displaying it
-plt.savefig('averaged_conf_mat.png')
-plt.show()
+plt.savefig('fold1_averaged_conf_mat.png')
+plt.close()
+wandb.log({"fold1_avg_confusion_matrix": wandb.Image('fold1_averaged_conf_mat.png')})
+
+
+#Fold 2 
+sns.heatmap(avg_conf_mat_fold2, annot=True, fmt='.2f', cmap='cool')
+plt.title("Fold 2 Averaged Classification Confusion Matrix")
+plt.ylabel("Actual label")
+plt.xlabel("Predicted label")
+# Save the figure before displaying it
+plt.savefig('fold2_averaged_conf_mat.png')
+plt.close() 
+wandb.log({"fold2_avg_confusion_matrix": wandb.Image('fold2_averaged_conf_mat.png')})
+
+# Fold 3
+sns.heatmap(avg_conf_mat_fold3, annot=True, fmt='.2f', cmap='cool')
+plt.title("Fold 3 Averaged Classification Confusion Matrix")
+plt.ylabel("Actual label")
+plt.xlabel("Predicted label")
+# Save the figure before displaying it
+plt.savefig('fold3_averaged_conf_mat.png')
+plt.close()
+wandb.log({"fold3_avg_confusion_matrix": wandb.Image('fold3_averaged_conf_mat.png')})
+
+# Fold 4
+sns.heatmap(avg_conf_mat_fold4, annot=True, fmt='.2f', cmap='cool')
+plt.title("Fold 4 Averaged Classification Confusion Matrix")
+plt.ylabel("Actual label")
+plt.xlabel("Predicted label")
+# Save the figure before displaying it
+plt.savefig('fold4_averaged_conf_mat.png')
+plt.close()
+wandb.log({"fold4_avg_confusion_matrix": wandb.Image('fold4_averaged_conf_mat.png')})
+
+# Plot the global averaged confusion matrix
+sns.heatmap(avg_conf_mat, annot=True, fmt='.2f', cmap='cool')
+plt.title("Global Averaged Classification Confusion Matrix")
+plt.ylabel("Actual label")
+plt.xlabel("Predicted label")
+# Save the figure before displaying it
+plt.savefig('global averaged_conf_mat.png')
+
 plt.close()
 
 # Log the averaged confusion matrix to wandb
 avg_conf_mat_fig = plt.figure(figsize=(10, 8))
 sns.heatmap(avg_conf_mat, annot=True, fmt='.2f', cmap='cool')
-plt.title("Averaged Classification Confusion Matrix")
+plt.title("Global Averaged Classification Confusion Matrix")
 plt.ylabel("Actual label")
 plt.xlabel("Predicted label")
 plt.close(avg_conf_mat_fig)
